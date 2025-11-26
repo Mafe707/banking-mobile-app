@@ -1,13 +1,9 @@
 /*
   Login.tsx
-  React Native login screen matching style/structure of your Register.tsx.
-  Requisitos:
-    npm install react-native-get-random-values
-    expo install react-native-get-random-values   # si usas Expo
+  Versión ajustada para validar contra tabla "users" y bcrypt.
 */
 
 import 'react-native-get-random-values';
-import Register from "./Register";
 import React, { useState } from 'react';
 import {
   View,
@@ -23,6 +19,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'expo-router';
+import bcrypt from 'bcryptjs';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -55,8 +52,8 @@ const Login: React.FC = () => {
   const inputBorderColor = (name: string) =>
     focused === name ? styles.inputFocus.borderColor : styles.input.borderColor;
 
+  // 🔥 NUEVO LOGIN → consulta tu tabla "users" + bcrypt.compare
   const handleSignIn = async () => {
-    // marcar touched para mostrar errores si no ha interactuado
     setTouched({ email: true, password: true });
 
     const err = validateAll();
@@ -68,31 +65,41 @@ const Login: React.FC = () => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password: String(password),
-      });
+      // 1. Buscar usuario en tu tabla personalizada
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.trim().toLowerCase())
+        .single();
 
-      if (error) {
-        // supabase puede regresar errores como PostgrestError o auth error
-        throw error;
+      if (error || !user) {
+        Alert.alert('Error', 'Usuario no encontrado');
+        return;
       }
 
-      // login exitoso
-      Alert.alert('Success', 'Signed in successfully');
-      // Redirigir a la pantalla principal (ajusta la ruta según tu app)
-      router.push('./Register');
+      // 2. Comparar contraseña ingresada vs hash guardado
+      const validPassword = await bcrypt.compare(password, user.password);
+
+      if (!validPassword) {
+        Alert.alert('Error', 'Contraseña incorrecta');
+        return;
+      }
+
+      // 3. Login exitoso
+      Alert.alert('Bienvenido', 'Inicio de sesión exitoso');
+
+      // Redirige donde necesites
+      router.push('./main'); // AJUSTA la ruta a tu pantalla real
+
     } catch (e: any) {
-      const message = e?.message || 'Unknown error';
       console.error('Login failed:', e);
-      Alert.alert('Login failed', message);
+      Alert.alert('Error', e?.message || 'Error inesperado');
     } finally {
       setLoading(false);
     }
   };
 
   const goToRegister = () => {
-    // Ajusta la ruta si tu archivo de register está en otra ruta
     router.push('./Register');
   };
 
@@ -157,7 +164,7 @@ const Login: React.FC = () => {
 
           <View style={{ marginTop: 12, alignItems: 'center' }}>
             <Text style={styles.helper}>
-              Don't have an account?{' '}
+              Don’t have an account?{' '}
               <Text style={styles.link} onPress={goToRegister}>
                 Sign up
               </Text>
@@ -216,7 +223,7 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   inputFocus: {
-    borderColor: '#16a34a', // verde
+    borderColor: '#16a34a',
   },
   button: {
     backgroundColor: '#22c55e',
